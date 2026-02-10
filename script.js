@@ -1,0 +1,319 @@
+        // ============================================
+        // CONFIGURATION - EDIT THIS!
+        // ============================================
+        const API_URL = 'https://script.google.com/macros/s/AKfycbx_60tvKiB4A7jQ0p2_ltmOW4q4qCp54D4VhCExBu5pKzADvfOv9eg4YDCJKTVAU3kK/exec';
+        // Example: 'https://script.google.com/macros/s/AKfycbxXXXXXXX/exec'
+
+        // ============================================
+        // STATE
+        // ============================================
+        let allParticipants = [];
+        let selectedParticipant = null;
+        let currentTab = 'participant';
+
+        // ============================================
+        // INITIALIZE
+        // ============================================
+        document.addEventListener('DOMContentLoaded', () => {
+            loadParticipants();
+            setupSearchListeners();
+        });
+
+        // ============================================
+        // LOAD ALL PARTICIPANTS
+        // ============================================
+        async function loadParticipants() {
+            try {
+                const response = await fetch(`${API_URL}?action=getAllParticipants`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    allParticipants = result.data;
+                    console.log('Loaded ' + allParticipants.length + ' participants');
+                } else {
+                    showAlert('error', 'Error loading participants: ' + result.message);
+                }
+            } catch (error) {
+                showAlert('error', 'Cannot connect to server. Check API_URL configuration.');
+                console.error('Error:', error);
+            }
+        }
+
+        // ============================================
+        // SETUP SEARCH LISTENERS
+        // ============================================
+        function setupSearchListeners() {
+            // Participant search
+            document.getElementById('search-participant').addEventListener('input', (e) => {
+                searchParticipants(e.target.value, 'participant');
+            });
+
+            // Admin search
+            document.getElementById('search-admin').addEventListener('input', (e) => {
+                searchParticipants(e.target.value, 'admin');
+            });
+
+            // Close dropdowns when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.input-group')) {
+                    document.querySelectorAll('.dropdown').forEach(d => d.classList.remove('show'));
+                }
+            });
+        }
+
+        // ============================================
+        // SEARCH PARTICIPANTS
+        // ============================================
+        function searchParticipants(query, mode) {
+            const dropdown = document.getElementById(mode + '-dropdown');
+            
+            if (!query.trim()) {
+                dropdown.classList.remove('show');
+                return;
+            }
+
+            const matches = allParticipants.filter(p => {
+                const searchText = query.toLowerCase();
+                return p.firstName.toLowerCase().includes(searchText) ||
+                       p.lastName.toLowerCase().includes(searchText) ||
+                       (p.firstName + ' ' + p.lastName).toLowerCase().includes(searchText);
+            });
+
+            if (matches.length === 0) {
+                dropdown.innerHTML = '<div style="padding: 15px; text-align: center; color: #999;">No participants found</div>';
+            } else {
+                dropdown.innerHTML = matches.slice(0, 10).map(p => `
+                    <div class="dropdown-item" onclick='selectParticipant(${JSON.stringify(p)}, "${mode}")'>
+                        <div class="dropdown-item-name">${p.firstName} ${p.lastName}</div>
+                        <div class="dropdown-item-info">
+                            Row ${p.rowNumber} • ${p.category} ${p.teamName ? '• ' + p.teamName : ''}
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            dropdown.classList.add('show');
+        }
+
+        // ============================================
+        // SELECT PARTICIPANT
+        // ============================================
+        function selectParticipant(participant, mode) {
+            selectedParticipant = participant;
+            
+            // Hide dropdown
+            document.getElementById(mode + '-dropdown').classList.remove('show');
+            
+            // Clear search
+            document.getElementById('search-' + mode).value = '';
+            
+            // Show selected box
+            document.getElementById(mode + '-selected').classList.add('show');
+            document.getElementById(mode + '-name').textContent = 
+                `${participant.firstName} ${participant.lastName}`;
+            document.getElementById(mode + '-info').textContent = 
+                `Row ${participant.rowNumber} • ${participant.category}`;
+            
+            // Hide info card and alerts
+            hideInfo();
+            hideAlert();
+        }
+
+        // ============================================
+        // VIEW DETAILS (Participant)
+        // ============================================
+        async function viewDetails() {
+            if (!selectedParticipant) return;
+            
+            showLoading();
+            hideAlert();
+            
+            try {
+                const response = await fetch(
+                    `${API_URL}?action=getParticipant&rowNumber=${selectedParticipant.rowNumber}`
+                );
+                const result = await response.json();
+                
+                if (result.success) {
+                    displayInfo(result.data, false);
+                } else {
+                    showAlert('error', result.message);
+                }
+            } catch (error) {
+                showAlert('error', 'Error loading details: ' + error.message);
+            }
+            
+            hideLoading();
+        }
+
+        // ============================================
+        // VIEW DETAILS (Admin)
+        // ============================================
+        async function viewDetailsAdmin() {
+            await viewDetails();
+        }
+
+        // ============================================
+        // CLAIM KIT (Admin)
+        // ============================================
+        async function claimKit() {
+            if (!selectedParticipant) return;
+            
+            const password = document.getElementById('admin-password').value;
+            if (!password) {
+                showAlert('error', 'Please enter admin password');
+                return;
+            }
+            
+            if (!confirm(`Claim kit for ${selectedParticipant.firstName} ${selectedParticipant.lastName}?`)) {
+                return;
+            }
+            
+            showLoading();
+            hideAlert();
+            
+            try {
+                const response = await fetch(
+                    `${API_URL}?action=claimKit&rowNumber=${selectedParticipant.rowNumber}&adminPassword=${encodeURIComponent(password)}`
+                );
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert('success', result.message);
+                    
+                    // Show success info
+                    const card = document.getElementById('info-card');
+                    card.innerHTML = `
+                        <h3>✅ Kit Claimed Successfully!</h3>
+                        <div class="info-row">
+                            <span class="info-label">Participant:</span>
+                            <span class="info-value">${result.data.participantName}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-label">Claimed At:</span>
+                            <span class="info-value">${result.data.claimedAt}</span>
+                        </div>
+                    `;
+                    card.classList.add('show');
+                    
+                    // Reload participants
+                    await loadParticipants();
+                    
+                    // Clear selection
+                    selectedParticipant = null;
+                    document.getElementById('admin-selected').classList.remove('show');
+                    
+                } else {
+                    showAlert('error', result.message);
+                }
+            } catch (error) {
+                showAlert('error', 'Error claiming kit: ' + error.message);
+            }
+            
+            hideLoading();
+        }
+
+        // ============================================
+        // DISPLAY INFO
+        // ============================================
+        function displayInfo(data, isAdmin) {
+            const card = document.getElementById('info-card');
+            
+            const kitStatus = data.kitClaimed && data.kitClaimed.toLowerCase().includes('claimed') ?
+                `<span class="badge badge-info">✓ Kit Claimed</span>` :
+                `<span class="badge badge-warning">⏳ Not Claimed</span>`;
+            
+            const regStatus = data.registrationStatus && data.registrationStatus.toLowerCase().includes('confirm') ?
+                `<span class="badge badge-success">✓ Confirmed</span>` :
+                `<span class="badge badge-warning">${data.registrationStatus || 'Pending'}</span>`;
+            
+            card.innerHTML = `
+                <h3>👤 Participant Information</h3>
+                <div class="info-row">
+                    <span class="info-label">Name:</span>
+                    <span class="info-value">${data.firstName} ${data.lastName}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Team:</span>
+                    <span class="info-value">${data.teamName || 'N/A'}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Category:</span>
+                    <span class="info-value">${data.category}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Shirt Size:</span>
+                    <span class="info-value">${data.shirtSize}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Add-ons:</span>
+                    <span class="info-value">${data.addOns || 'None'}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Registration:</span>
+                    <span class="info-value">${regStatus}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Kit Status:</span>
+                    <span class="info-value">${kitStatus}</span>
+                </div>
+                ${data.kitClaimed ? `
+                <div class="info-row">
+                    <span class="info-label">Claimed:</span>
+                    <span class="info-value">${data.kitClaimed}</span>
+                </div>
+                ` : ''}
+                <div class="fb-link">
+                    <a href="${data.fbPageUrl}" target="_blank">📘 Visit Our Facebook Page</a>
+                </div>
+            `;
+            
+            card.classList.add('show');
+        }
+
+        // ============================================
+        // SWITCH TAB
+        // ============================================
+        function switchTab(tab) {
+            currentTab = tab;
+            
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Show/hide sections
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.getElementById(tab + '-section').classList.add('active');
+            
+            // Clear everything
+            hideInfo();
+            hideAlert();
+            selectedParticipant = null;
+            document.querySelectorAll('.selected-box').forEach(b => b.classList.remove('show'));
+        }
+
+        // ============================================
+        // UI HELPERS
+        // ============================================
+        function showLoading() {
+            document.getElementById('loading').style.display = 'block';
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        function showAlert(type, message) {
+            const alert = document.getElementById('alert');
+            alert.className = 'alert alert-' + type;
+            alert.textContent = message;
+            alert.style.display = 'block';
+        }
+
+        function hideAlert() {
+            document.getElementById('alert').style.display = 'none';
+        }
+
+        function hideInfo() {
+            document.getElementById('info-card').classList.remove('show');
+        }
