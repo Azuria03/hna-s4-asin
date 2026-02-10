@@ -1,7 +1,7 @@
         // ============================================
         // CONFIGURATION - EDIT THIS!
         // ============================================
-        const API_URL = 'https://script.google.com/macros/s/AKfycby52Kn0K4KXxe5U2zgt4ezii-c8Fb6gA00WMrSTMjU3U6f652NafzXA0P-e6ca1L3LpJQ/exec';
+        const API_URL = 'https://script.google.com/macros/s/AKfycbygRWhUip6rEH9EynrS9tJT1aB2Nqv00ZRLDCH6iZAz_MbVyFAw3XyifNm-mgkYher2/exec';
         // Example: 'https://script.google.com/macros/s/AKfycbxXXXXXXX/exec'
 
         // ============================================
